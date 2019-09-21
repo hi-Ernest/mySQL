@@ -1,0 +1,288 @@
+
+-- The SQL Foundation
+
+
+/*
+  creat table
+  drop
+  alter table XX to XXX
+  alter table 表名 add column 列名
+                  drop
+
+  插入：
+      start transaction; //(or begin (SQL Server)) 开启事务
+      insert into Product values ('1001','T恤',200,556,'2006-02-23');
+      commit; //确认提交
+
+ */
+select product_type, count(*), avg(sale_price)
+from product
+/*
+  对表数据指定筛选条件
+  各种运算符： 加减乘除、and、or、is null、is not null
+ */
+
+where product_type = '衣服' and avg(sale_price)
+/*
+  对表进行分组: 分组键
+  不能使用别名
+  排序是随机的
+  执行顺序： from -> where -> group by -> select
+*/
+group by product_type;
+-- 为聚合结果指定条件 --> 通俗就是指定条件 -> 筛选组
+-- 条件: 常数、聚合函数、group by子句中指定的列名(聚合键)
+having avg(sale_price)>=2500
+
+-- 升序：默认(ASC)
+-- 讲序：DESC
+-- 可以指定多个排序键    特别：null可能开头或末尾
+-- 可以使用别名：SQL执行---> 先执行 select 再会执行 order by
+order by sale_price, product_id
+
+
+-- 多行插入
+insert into productIns values ('002', '打孔机', '办公用品', 200, 100, '2009-02-23'),
+                              ('002', '打孔机', '办公用品', 800, 100, '2009-02-23'),
+                              ('002', '打孔机', '办公用品', 780, 100, '2009-02-23'),
+                              ('002', '打孔机', '办公用品', null, 100, '2009-02-23');
+
+insert into productIns (product_id, product_name, product_type,product_price)
+                values ('006', '叉子', '厨房用具', 50)
+
+-- 插入默认值
+-- (但在创建表的时候： sale_price integer default 0)
+-- 显式/隐式则忽略该列名以及赋值即可
+default
+
+/*
+  清空表数据 (删除对象而不是表, 而是表中的数据行而不是列)
+ */
+delete from productIns where sale_price >= 25;
+
+
+/*
+  更新数据
+ */
+update product
+    set sale_price = sale_price * 10,
+        purchase_price = purchase / 2
+where product_type = '厨房用具';
+
+
+update product
+    set (sale_price, purchase_price) = (sale_price * 10, purchase_price / 2)
+where product_type = '厨房用具';
+
+
+/*
+  事务
+  1.每条SQL语句就是一个事务
+  2.直到用户执行COMMIT或者ROLLBACK为止算作一个事务
+ */
+
+--  MySQL (SQL server: begin || Oracle、DB2: 无)
+start transaction; -- 开启事务
+    -- DML语句
+    update product
+        set sale_price = sale_price + 200
+    where product_type = 'T恤衣';
+
+    -- DML语句
+    update product
+        set (sale_price, purchase_price) = (sale_price * 10, purchase_price / 2)
+    where product_name = '厨房用具';
+
+commit; -- 事务结束语句(或者rollback;)
+
+
+/*
+  视图
+  优点：1)使用视图,不会将数据保存在任何地方(存储设备等),实际上保存的是select语句(节省存储设备的容量)
+       2)将频繁使用select语句保存成视图,这样不用每次都重新书写.只需要在SELECT语句进行调用->得到结果
+         随着原数据表变化->视图也会自动更新
+
+  从视图读取数据：视图内部执行select语句并创建出一张临时表
+
+  总结：视图读取数据->存储数据(不用创建实际的表存储数据,消耗存储空间)
+
+  视图的限制：1)定义视图：不能使用order by子句-------(原因：视图和表一样,数据行是没有顺序的)
+            2)更新视图：select语句未使用distinct、
+                        from子句只有一张表、
+                        未使用group by子句、
+                        未使用having子句
+ */
+
+-- 创建视图
+create view productSum (product_type, cnt_product)
+as
+select product_type, count(*)
+    from product
+    group by product_type;
+
+
+-- 使用视图
+select product_type, cnt_product
+from productSum;
+
+-- ps:可以在视图的基础上创建视图(多重视图)
+
+
+-- 删除视图
+drop view productSum;
+
+
+
+/*
+  子查询
+  1)首先都是会先执行内部的select查询
+ */
+ select product_type, cnt_product
+    -- 直接书写定义视图的select语句
+    from (select product_type, count(*) as cnt_product
+            from Product
+                group by product_type) as ProductSum; -- 作为Product_type视图
+
+
+/*
+  where子句中不能使用标量子查询
+
+  标量子查询：只能返回一行一列的数据
+
+  应该如下：
+ */
+ select product_id, product_name, sale_price
+    from Product
+        where sale_price > (select AVG(sale_price)
+                            from Product);
+
+
+ select product_id,
+        product_name,
+        sale_price,
+        (select AVG(sale_price)
+                    from Product) as avg_price
+    from Product;
+
+-- 某种类的平均价格 > 全部商品的平均价格
+select product_type, avg(sale_price)
+    from Product
+    group by product_type
+    having avg(sale_price) > (select avg(sele_price)
+                                from Product);
+
+
+-- 若加入 group by product_type 即返回多组数据 -> 错误
+-- 使用关联子查询：
+-- 结合条件一定放在子查询中, 关联名称的作用域, 内部可以看到外部,外部不能看到内部
+ select product_id, product_name, sale_price
+    from Product as P1
+        where sale_price > (select AVG(sale_price)
+                                from Product as P2
+                                    where P1.product_type = P2.prduct_type
+                                        group by product_type);
+
+
+/*
+  谓词
+ */
+ select * from SampleLike
+    where strcol like 'ddd%';
+
+-- 输出：dddabc
+
+/*
+  输入：like '%ddd%'
+  输出：abcddd dddabc abdddc
+
+
+  输入：like '%ddd'
+  输出：abcddd
+
+
+  输入：like 'abc__' (两个--即有任意两个字符)
+  输出：abcdd
+
+ */
+
+
+ /*
+    包括即 100 <= x <= 1000
+  */
+ select * from Product
+    where sale_price between 100 and 1000;
+
+
+ /*
+    is null
+    is not null
+    or
+    in (320, 500, 5000) 指定多个进货单价
+    no in
+
+  */
+
+
+  create table ShopProduct
+  (shop_id  char(4) not null,
+   shop_name    varchar(200)    not null,
+   product_id   char(4) not null,
+   quantity integer not null,
+   primary key (shop_id, product_id)
+  );
+
+
+
+/*
+  以行(记录)为单位增减
+
+  执行表的并集操作(重复记录将被去重)
+  保留重复行(关键字：All)
+  选取表中公共的部分(关键字：intersect)
+  记录的减法(关键字：except)
+  注意：
+    1)列数需要保持一致
+    2)相同位置的列必须是统一数据类型 如product_id、regist_date
+    3)可以使用任何select语句, 但order by只能在最后使用一次
+ */
+select product_id, product_name
+    from Product
+union
+select product_id, product_name
+    from Product2
+    order by product_id;
+
+
+/*
+  联接(JOIN)：以列为单位对表进行联接, 列的增减
+
+ */
+
+--  内联接(inner join)(两张表的列联接 -> 公共的是product_id)
+--        内联接只能选取出同时存在于两张表中的数据
+/*
+    要点：1)from子句表使用别名
+         2) on 子句后面联接的条件
+         3)select子句指定列名：<别名>.<列名>
+ */
+select sp.shop_id, sp.shop_name, sp.product_id, p.product_name,
+        p.sale_price
+        from ShopProduct as sp inner join Product as p
+            on sp.product_id = p.priduct_id;
+
+
+-- 外联接(outer join)
+/*
+    结果：比内联接的结果多个两行数据
+
+    要点：1)选取单张表中全部信息
+         2)只有数据存在某一张表中,就能够读取出来
+         实际业务：例如想要生成固定行数的单据时候,需要外联接
+         3)确定哪张是主表 -> LEFT 和 RIGHT
+            如：LEFT -> 即FROM子句中写在左侧的表是主表, RIGHT则是右侧
+ */
+select sp.shop_id, sp.shop_name, sp.product_id, p.product_name,
+        p.sale_price
+        from ShopProduct as sp right outer join Product as p
+            on sp.product_id = p.priduct_id;
+
